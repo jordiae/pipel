@@ -1,15 +1,15 @@
 # pipelib
 
-`pipelib` is a Python library for parallelizing map-like functions inspired by MapReduce, but very simple. Full
+`pipel` is a Python library for parallelizing map-like functions inspired by MapReduce, but very simple. Full
 disclaimer: I have published this small package because personally I found it helpful, but do not expect any guarantees
-or maintenance. I am sure that there are tons of libraries better than `pipelib`, but this approach worked for me.
+or maintenance. I am sure that there are tons of libraries better than `pipel`, but this approach worked for me.
 
 ### Install
 
-`pipelib` supports Python >= 3.6.
+`pipel` supports Python >= 3.6.
 
 ```
-pip install pipelib
+pip install pipel
 ```
 
 
@@ -24,6 +24,7 @@ The code is documented and there is one example in the ```examples/``` directory
 <https://github.com/TeMU-BSC/CorpusCleaner>.
 
 ```
+from pipel import Pipeline
 pipeline = Pipeline(streamers=streamers,  # List of generators
                     mappers_factory=mappers_factory,  # Function that returns a list of functions/callables that will be
                                                       # consecutively applied to each element in each generator

@@ -1,5 +1,5 @@
-from pipelib import Pipeline
-from pipelib import PipelineLogger
+from pipel import Pipeline
+from pipel import PipelineLogger
 import os
 import filecmp
 import time
