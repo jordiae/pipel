@@ -7,10 +7,10 @@ import string
 from typing import Iterable
 from typing import Generator
 from typing import cast
+from typing import List
 import multiprocessing
 import logging
 import shutil
-
 DATA_DIR = 'data'
 RES_DIR = 'res'
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -27,14 +27,20 @@ def prepare_example(data_dir: str):
             i += j
 
 
-def input_generator(cost: int = 0) -> Iterable[int]:
+def stream(c: string, data_dir: str, cost: int):
+    path = os.path.join(data_dir, c + '.txt')
+    with open(path, 'r') as f:
+        for i in f.readlines():
+            time.sleep(cost * 0.0001)
+            yield int(i.strip())
+
+
+def streams(cost: int = 0) -> List[Iterable[int]]:
     data_dir = DATA_DIR
+    s = []
     for c in string.ascii_lowercase:
-        path = os.path.join(data_dir, c + '.txt')
-        with open(path, 'r') as f:
-            for i in f.readlines():
-                time.sleep(cost*0.0001)
-                yield int(i.strip())
+        s.append(stream(c, data_dir, cost))
+    return s
 
 
 def input_list(cost: int = 0) -> Iterable[int]:
@@ -59,11 +65,12 @@ class P2:
     def __init__(self, cost: int, logger: PipelineLogger = None):
         self.cost = cost
         self.logger = logger
+        self.non_pickable_dependency = open('non_pickable_dependency.txt', 'r')
 
     def __call__(self, i: int) -> int:
         time.sleep(self.cost * 0.0001)
         if self.logger is not None and i % 10000 == 0:
-            self.logger.log(f'{self.__class__.__name__}: processed the number {i}')
+            self.logger.info(f'{self.__class__.__name__}: processed the number {i}')
         return i
 
 
@@ -96,7 +103,7 @@ def init_logger() -> logging.Logger:
     return logger
 
 
-def run():
+def main():
     if not os.path.exists(DATA_DIR):
         os.makedirs(RES_DIR)
     prepare_example(DATA_DIR)
@@ -116,7 +123,8 @@ def run():
         res = input_list(io_cost)
         t1_input = time.time()
         t0_cpu = time.time()
-        res = [p3(P2(cpu_cost)(p1(e))) for e in res]
+        p2 = P2(cpu_cost)
+        res = [p3(p2(p1(e))) for e in res]
         t1_cpu = time.time()
         t0_output = time.time()
         out = Output(os.path.join(RES_DIR, 'seq.txt'), io_cost)
@@ -132,10 +140,11 @@ def run():
         print()
 
         t0_pipeseq = time.time()
-        pipeline = Pipeline(input_generator=cast(Generator, input_generator(io_cost)),
-                            processors=[p1, P2(cpu_cost), p3],
-                            output_procedure=Output(os.path.join(RES_DIR, 'pipeseq.txt'), io_cost), batch_size=1000,
-                            parallel=False, logger=None)
+        pipeline = Pipeline(streamers=[cast(Generator, g) for g in streams(io_cost)],
+                            mappers_factory=lambda: [p1, P2(cpu_cost), p3],
+                            output_reducer=Output(os.path.join(RES_DIR, 'pipeseq.txt'), io_cost), batch_size=1000,
+                            parallel=False)
+
         pipeline.run()
         t1_pipeseq = time.time()
         correct = filecmp.cmp(os.path.join(RES_DIR, 'seq.txt'), os.path.join(RES_DIR, 'pipeseq.txt'))
@@ -145,10 +154,10 @@ def run():
 
         t0_pipepar = time.time()
 
-        pipeline = Pipeline(input_generator=cast(Generator, input_generator(io_cost)),
-                            processors=[p1, P2(cpu_cost), p3],
-                            output_procedure=Output(os.path.join(RES_DIR, 'pipepar.txt'), io_cost), batch_size=1000,
-                            parallel=True, logger=None)
+        pipeline = Pipeline(streamers=[cast(Generator, g) for g in streams(io_cost)],
+                            mappers_factory=lambda: [p1, P2(cpu_cost), p3],
+                            output_reducer=Output(os.path.join(RES_DIR, 'pipepar.txt'), io_cost), batch_size=1000,
+                            parallel=True)
         pipeline.run()
 
         t1_pipepar = time.time()
@@ -162,9 +171,9 @@ def run():
     cpu_cost = 0
     logger = init_logger()
     logger = PipelineLogger(logger)
-    pipeline = Pipeline(input_generator=cast(Generator, input_generator(io_cost)),
-                        processors=[p1, P2(cpu_cost, logger=logger), p3],
-                        output_procedure=Output(os.path.join(RES_DIR, 'pipeparlogs.txt'), io_cost), batch_size=1000,
+    pipeline = Pipeline(streamers=[cast(Generator, g) for g in streams(io_cost)],
+                        mappers_factory=lambda: [p1, P2(cpu_cost), p3],
+                        output_reducer=Output(os.path.join(RES_DIR, 'pipeseq.txt'), io_cost), batch_size=1000,
                         parallel=True, logger=logger, log_every_iter=1)
     pipeline.run()
 
@@ -173,4 +182,4 @@ def run():
 
 
 if __name__ == '__main__':
-    run()
+    main()

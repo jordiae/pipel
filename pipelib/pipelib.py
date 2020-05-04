@@ -53,7 +53,7 @@ Q = TypeVar('Q')
 
 
 class Pipeline:
-    def __init__(self, streamers: Generator[S, None, None], mappers_factory: Callable[[], List[Callable[[S], S]]],
+    def __init__(self, streamers: List[Generator[S, None, None]], mappers_factory: Callable[[], List[Callable[[S], S]]],
                  output_reducer: Callable[[Iterable[S]], None], batch_size: int, parallel: bool,
                  logger: Optional[PipelineLogger] = None, log_every_iter: int = 10):
         """
@@ -84,6 +84,7 @@ class Pipeline:
         """
 
         self.streamers = [self.batch_generator(g, batch_size) for g in streamers]
+        self.par_logger = logger
         if parallel:
             if self.par_logger:
                 self.streamers_loading = time.time()
@@ -96,7 +97,6 @@ class Pipeline:
         self.mappers_factory = mappers_factory
         self.output_reducer = output_reducer
         self.parallel = parallel
-        self.par_logger = logger
         self.log_every_iter = log_every_iter
         self.done = False
 
@@ -132,7 +132,6 @@ class Pipeline:
         :return:
         """
         assert not self.done
-        self.parallel = True
         if self.par_logger:
             input_time = 0.0
             compute_time = 0.0
@@ -159,8 +158,9 @@ class Pipeline:
                             compute_time += (t1-t0)
                         if p_init:
                             p.join()
-                            t1_output = time.time()
-                            output_time += (t1_output - t0_output)
+                            if self.par_logger:
+                                t1_output = time.time()
+                                output_time += (t1_output - t0_output)
                         if self.par_logger:
                             if idx % self.log_every_iter == 0:
                                 self.par_logger.logger.info(f'{self.__class__.__name__}: Processed batch {idx+1}')
@@ -200,9 +200,9 @@ class Pipeline:
 
         if self.par_logger:
             input_time += self.streamers_loading
-            self.par_logger.info(f'Total input time: {input_time:.2f}s')
-            self.par_logger.info(f'Total compute time: {compute_time:.2f}s')
-            self.par_logger.info(f'Total output/reduce time: {output_time:.2f}s')
+            self.par_logger.logger.info(f'Total input time: {input_time:.2f}s')
+            self.par_logger.logger.info(f'Total compute time: {compute_time:.2f}s')
+            self.par_logger.logger.info(f'Total output/reduce time: {output_time:.2f}s')
         self.done = True
 
     @staticmethod

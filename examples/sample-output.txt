@@ -1,41 +1,49 @@
 Equal
 Vanilla Sequential
-IO: 17.266485929489136s (50.53%)
-CPU: 16.90371870994568s (49.47%)
-Total 34.17s
+IO: 16.61910057067871s (50.56%)
+CPU: 16.249665021896362s (49.44%)
+Total 32.87s
 
-pipelib sequential: 34.04s
+pipelib sequential: 33.19s
 pipelib sequential is CORRECT
 
-pipelib parallel with 4 cores: 8.93s
+pipelib parallel with 4 cores: 8.84s
 pipelib parallel is CORRECT
 
 IO-bound
 Vanilla Sequential
-IO: 63.35567355155945s (78.56%)
-CPU: 17.294628381729126s (21.44%)
-Total 80.65s
+IO: 62.48302245140076s (79.26%)
+CPU: 16.354532718658447s (20.74%)
+Total 78.84s
 
-pipelib sequential: 79.16s
+pipelib sequential: 78.96s
 pipelib sequential is CORRECT
 
-pipelib parallel with 4 cores: 32.33s
+pipelib parallel with 4 cores: 32.50s
 pipelib parallel is CORRECT
 
 CPU-bound
 Vanilla Sequential
-IO: 0.21309518814086914s (0.83%)
-CPU: 25.38043522834778s (99.17%)
-Total 25.59s
+IO: 0.12923359870910645s (0.52%)
+CPU: 24.561752557754517s (99.48%)
+Total 24.69s
 
-pipelib sequential: 25.59s
+pipelib sequential: 24.88s
 pipelib sequential is CORRECT
 
-pipelib parallel with 4 cores: 6.74s
+pipelib parallel with 4 cores: 6.21s
 pipelib parallel is CORRECT
 
 Example with logs for the pipeline and P2:
-P2: processed the number 0
+Pipeline: Initializing streamers
+Pipeline: Initializing mappers
+Pipeline: Mappers initialized in 0.00s
+Pipeline: Initializing mappers
+Pipeline: Mappers initialized in 0.00s
+Pipeline: Initializing mappers
+Pipeline: Mappers initialized in 0.00s
+Pipeline: Initializing mappers
+Pipeline: Mappers initialized in 0.00s
 Pipeline: Processed batch 1
 Pipeline: Processed batch 2
 Pipeline: Processed batch 3
@@ -46,7 +54,6 @@ Pipeline: Processed batch 7
 Pipeline: Processed batch 8
 Pipeline: Processed batch 9
 Pipeline: Processed batch 10
-P2: processed the number 10000
 Pipeline: Processed batch 11
 Pipeline: Processed batch 12
 Pipeline: Processed batch 13
@@ -57,10 +64,12 @@ Pipeline: Processed batch 17
 Pipeline: Processed batch 18
 Pipeline: Processed batch 19
 Pipeline: Processed batch 20
-P2: processed the number 20000
 Pipeline: Processed batch 21
 Pipeline: Processed batch 22
 Pipeline: Processed batch 23
 Pipeline: Processed batch 24
 Pipeline: Processed batch 25
 Pipeline: Processed batch 26
+Total input time: 0.31s
+Total compute time: 3.89s
+Total output/reduce time: 8.01s
