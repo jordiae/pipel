@@ -2,7 +2,7 @@ from distutils.core import setup
 setup(
       name='pipel',
       packages=['pipel'],
-      version='0.1.5',
+      version='0.1',
       license='MIT',
       description='Helper for parallelizing map-like functions when there are generators involved.',
       author='Jordi Armengol-Estapé',
@@ -11,7 +11,7 @@ setup(
       zip_safe=False,
       keywords=['multiprocessing', 'generators'],
       install_requires=[
-              'multiprocessing-logging==0.1'
+              'multiprocessing-logging==0.3.1'
           ],
       classifiers=[
             'Development Status :: 3 - Alpha',
