@@ -2,7 +2,7 @@ from distutils.core import setup
 setup(
       name='pipel',
       packages=['pipel'],
-      version='0.1',
+      version='0.1.1',
       license='MIT',
       description='Helper for parallelizing map-like functions when there are generators involved.',
       author='Jordi Armengol-Estapé',
