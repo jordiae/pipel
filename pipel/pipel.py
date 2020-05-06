@@ -94,6 +94,9 @@ class Pipeline:
             if self.par_logger:
                 self.streamers_loading = time.time()-self.streamers_loading
 
+        else:
+            self.streamers_loading = 0.0
+
         self.mappers_factory = mappers_factory
         self.output_reducer = output_reducer
         self.parallel = parallel
@@ -196,6 +199,8 @@ class Pipeline:
                     if self.par_logger:
                         t1 = time.time()
                         output_time += (t1-t0)
+                        if idx % self.log_every_iter == 0:
+                            self.par_logger.logger.info(f'{self.__class__.__name__}: Processed batch {idx+1}')
                         t0 = time.time()
 
         if self.par_logger:
