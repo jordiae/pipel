@@ -8,8 +8,21 @@ from typing import Iterable
 from typing import Optional
 import multiprocessing_logging
 import time
+try:
+    from ray.util.multiprocessing import Pool
+except ImportError:
+    pass
+
 
 T = TypeVar('T')
+
+
+class Globals:
+    def __init__(self):
+        self.F_MAPPERS = None
+
+
+G = Globals()
 
 
 class Composed:
@@ -52,10 +65,10 @@ R = TypeVar('R')
 Q = TypeVar('Q')
 
 
-class Pipeline:
+class CollectingPipeline:
     def __init__(self, streamers: List[Generator[S, None, None]], mappers_factory: Callable[[], List[Callable[[S], S]]],
-                 output_reducer: Callable[[Iterable[S]], None], batch_size: int, parallel: bool,
-                 logger: Optional[PipelineLogger] = None, log_every_iter: int = 10):
+                 output_reducer: Callable[[Iterable[S]], None], batch_size: int, parallel: bool, parallel_streams: bool,
+                 logger: Optional[PipelineLogger] = None, log_every_iter: int = 10, backend: str = 'mp'):
         """
         A simple class for parallelizing a set of transformations that are consecutively applied to a stream of data.
         Notice that Multiprocessing's parallel map cannot work with generators, which makes it not usable when data is
@@ -83,9 +96,13 @@ class Pipeline:
         :param log_every_iter: If the logger is set, the pipeline will log every log_every_iter iterations (int).
         """
 
+        assert backend in ['mp', 'ray']
+        self.backend = backend
+
         self.streamers = [self.batch_generator(g, batch_size) for g in streamers]
         self.par_logger = logger
-        if parallel:
+        self.pool = None
+        if parallel_streams:
             if self.par_logger:
                 self.streamers_loading = time.time()
                 self.par_logger.logger.info(f'{self.__class__.__name__}: Initializing streamers')
@@ -102,22 +119,17 @@ class Pipeline:
         self.parallel = parallel
         self.log_every_iter = log_every_iter
         self.done = False
+        self.f_mappers = None
 
-    def _initialize_mappers(self):
+    @staticmethod
+    def _initialize_mappers(mappers_factory):
         """
         Helper function to initialize the mappers (and, therefore, allow non-pickable callable to be passed to a
         parallel map). The use of global, although not ideal, is safe in this case, and it is used as a workaraound
         for initializing the mappers in each process.
         :return:
         """
-        if self.par_logger:
-            t0 = time.time()
-            self.par_logger.logger.info(f'{self.__class__.__name__}: Initializing mappers')
-        global F_MAPPERS
-        F_MAPPERS = Composed(self.mappers_factory)
-        if self.par_logger:
-            t1 = time.time()
-            self.par_logger.logger.info(f'{self.__class__.__name__}: Mappers initialized in {t1-t0:.2f}s')
+        G.F_MAPPERS = Composed(mappers_factory)
 
     @staticmethod
     def _map_f(x):
@@ -126,7 +138,7 @@ class Pipeline:
         :param x: Object to be transformed.
         :return: Result from the series of transformations.
         """
-        return F_MAPPERS(x)
+        return G.F_MAPPERS(x)
 
     def run(self):
         """
@@ -134,51 +146,110 @@ class Pipeline:
         pipeline is executed sequentially.
         :return:
         """
+
         assert not self.done
         if self.par_logger:
             input_time = 0.0
             compute_time = 0.0
             output_time = 0.0
+        first = True
         if self.parallel:
-            with multiprocessing.Pool(initializer=self._initialize_mappers) as pool:
-                p_init = False
-                if self.par_logger:
-                    t0 = time.time()
-                while len(self.streamers) > 0:
-                    for idx, generator in enumerate(self.streamers):
-                        try:
-                            batch = next(generator)
-                        except StopIteration:
-                            del self.streamers[idx]
-                            continue
-                        if self.par_logger:
-                            t1 = time.time()
-                            input_time += (t1-t0)
-                            t0 = time.time()
-                        res = pool.map(self._map_f, batch)
-                        if self.par_logger:
-                            t1 = time.time()
-                            compute_time += (t1-t0)
-                        if p_init:
-                            p.join()
-                            if self.par_logger:
-                                t1_output = time.time()
-                                output_time += (t1_output - t0_output)
-                        if self.par_logger:
-                            if idx % self.log_every_iter == 0:
-                                self.par_logger.logger.info(f'{self.__class__.__name__}: Processed batch {idx+1}')
-                            t0_output = time.time()
-                        p = multiprocessing.Process(target=self.output_reducer, args=(res,))
-                        p.start()
-                        p_init = True
-                        if self.par_logger:
-                            t0 = time.time()
-                    p.join()
-                    p.terminate()
-        else:
-            self._initialize_mappers()
             if self.par_logger:
                 t0 = time.time()
+                self.par_logger.logger.info(f'{self.__class__.__name__}: Initializing mappers')
+            if self.backend == 'mp':
+                with multiprocessing.Pool(initializer=self._initialize_mappers) as pool:
+                    if first:
+                        if self.par_logger:
+                            t1 = time.time()
+                            self.par_logger.logger.info(
+                                f'{self.__class__.__name__}: Mappers initialized in {t1-t0:.2f}s')
+                        first = False
+                    p_init = False
+                    if self.par_logger:
+                        t0 = time.time()
+                    i = 0
+                    while len(self.streamers) > 0:
+                        for idx, generator in enumerate(self.streamers):
+                            try:
+                                batch = next(generator)
+                            except StopIteration:
+                                del self.streamers[idx]
+                                continue
+                            if self.par_logger:
+                                t1 = time.time()
+                                input_time += (t1-t0)
+                                t0 = time.time()
+                            res = pool.map(self._map_f, batch)
+                            if self.par_logger:
+                                t1 = time.time()
+                                compute_time += (t1-t0)
+                            if p_init:
+                                p.join()
+                                if self.par_logger:
+                                    t1_output = time.time()
+                                    output_time += (t1_output - t0_output)
+                            if self.par_logger:
+                                if (idx+1) % self.log_every_iter == 0:
+                                    self.par_logger.logger.info(f'{self.__class__.__name__}: Processed batch {idx+1+i}')
+                                t0_output = time.time()
+                            p = multiprocessing.Process(target=self.output_reducer, args=(res,))
+                            p.start()
+                            p_init = True
+                            if self.par_logger:
+                                t0 = time.time()
+                        i += 1
+                        p.join()
+                        p.terminate()
+            else:
+                with multiprocessing.Pool(initializer=self._initialize_mappers) as pool:
+                    if first:
+                        if self.par_logger:
+                            t1 = time.time()
+                            self.par_logger.logger.info(
+                                f'{self.__class__.__name__}: Mappers initialized in {t1-t0:.2f}s')
+                        first = False
+                    p_init = False
+                    if self.par_logger:
+                        t0 = time.time()
+                    i = 0
+                    while len(self.streamers) > 0:
+                        for idx, generator in enumerate(self.streamers):
+                            try:
+                                batch = next(generator)
+                            except StopIteration:
+                                del self.streamers[idx]
+                                continue
+                            if self.par_logger:
+                                t1 = time.time()
+                                input_time += (t1-t0)
+                                t0 = time.time()
+                            res = pool.map(self._map_f, batch)
+                            if self.par_logger:
+                                t1 = time.time()
+                                compute_time += (t1-t0)
+                            if p_init:
+                                p.join()
+                                if self.par_logger:
+                                    t1_output = time.time()
+                                    output_time += (t1_output - t0_output)
+                            if self.par_logger:
+                                if (idx+1) % self.log_every_iter == 0:
+                                    self.par_logger.logger.info(f'{self.__class__.__name__}: Processed batch {idx+1+i}')
+                                t0_output = time.time()
+                            p = multiprocessing.Process(target=self.output_reducer, args=(res,))
+                            p.start()
+                            p_init = True
+                            if self.par_logger:
+                                t0 = time.time()
+                        i += 1
+                        p.join()
+                        p.terminate()
+        else:
+            self._initialize_mappers(self.mappers_factory)
+            if self.par_logger:
+                t0 = time.time()
+            i = 0
             while len(self.streamers) > 0:
                 for idx, generator in enumerate(self.streamers):
                     try:
@@ -199,9 +270,10 @@ class Pipeline:
                     if self.par_logger:
                         t1 = time.time()
                         output_time += (t1-t0)
-                        if idx % self.log_every_iter == 0:
-                            self.par_logger.logger.info(f'{self.__class__.__name__}: Processed batch {idx+1}')
+                        if (idx+1) % self.log_every_iter == 0:
+                            self.par_logger.logger.info(f'{self.__class__.__name__}: Processed batch {idx+1+i}')
                         t0 = time.time()
+                i += 1
 
         if self.par_logger:
             input_time += self.streamers_loading
@@ -268,3 +340,87 @@ class Pipeline:
             if empty:
                 break
             yield batch
+
+
+class MappingPipeline:
+    def __init__(self, streams: List[S], mappers_factory: Callable[[], List[Callable[[S], S]]],
+                 parallel: bool, logger: Optional[PipelineLogger] = None, log_every_iter: int = 10,
+                 backend: str = 'mp'):
+        """
+        A simple class for parallelizing map-like functions.
+        :param streams: The seed input to the mappers.
+        :param mappers_factory: A callable that returns a list of callable objects (functions or objects with the
+        __call__ method), which will be the mappers of the pipeline.
+        :param parallel: Whether to run the pipeline in parallel. By default, set to True.
+        :param logger: A standard logger (optional).
+        :param log_every_iter: If the logger is set, the pipeline will log every log_every_iter iterations (int).
+        """
+
+        assert backend in ['mp', 'ray']
+        self.backend = backend
+
+        self.streams = streams
+        self.par_logger = logger
+
+        self.mappers_factory = mappers_factory
+        self.parallel = parallel
+        self.log_every_iter = log_every_iter
+        if self.par_logger:
+            raise NotImplementedError('No pipeline logging implemented')
+        self.done = False
+        self.f_mappers = None
+
+    @staticmethod
+    def _initialize_mappers(mappers_factory, work_dir=None):
+        """
+        Helper function to initialize the mappers (and, therefore, allow non-pickable callable to be passed to a
+        parallel map). The use of global, although not ideal, is safe in this case, and it is used as a workaraound
+        for initializing the mappers in each process.
+        :return:
+        """
+        if work_dir is not None:
+            os.chdir(work_dir)  # needed for ray
+        G.F_MAPPERS = Composed(mappers_factory)
+
+    @staticmethod
+    def _map_f(x):
+        """
+        Helper function to call the composed mappers.
+        :param x: Object to be transformed.
+        :return: Result from the series of transformations.
+        """
+        return G.F_MAPPERS(x)
+
+    def run(self) -> Any:
+        """
+        Runs the pipeline with the aforementioned parallelization strategy if parallel is set to True. Otherwise, the
+        pipeline is executed sequentially.
+        :return:
+        """
+
+        assert not self.done
+        if self.par_logger:
+            pass
+        if self.parallel:
+            if self.par_logger:
+                self.par_logger.logger.info(f'{self.__class__.__name__}: Initializing mappers')
+
+            if self.backend == 'mp':
+                with multiprocessing.Pool(initializer=self._initialize_mappers, initargs=(self.mappers_factory,)) \
+                        as pool:
+                            res = pool.map(self._map_f, self.streams)
+            else:
+                work_dir = os.getcwd()
+                ray.init(address='auto', redis_password='5241590000000000')
+                with Pool(initializer=self._initialize_mappers, initargs=(self.mappers_factory, work_dir)) as pool:
+                    res = pool.map(self._map_f, self.streams)
+        else:
+            self._initialize_mappers(self.mappers_factory)
+            res = []
+            for e in self.streams:
+                res.append(self._map_f(e))
+
+        if self.par_logger:
+            self.par_logger.logger.info(f'{self.__class__.__name__}: Mapping pipeline executed')
+        self.done = True
+        return res

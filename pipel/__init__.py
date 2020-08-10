@@ -1,3 +1,3 @@
-from .pipel import Pipeline, PipelineLogger
+from .pipel import CollectingPipeline, MappingPipeline, PipelineLogger
 
-__all__ = ['Pipeline', 'PipelineLogger']
+__all__ = ['CollectingPipeline', 'MappingPipeline', 'PipelineLogger']

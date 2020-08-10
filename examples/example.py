@@ -1,4 +1,4 @@
-from pipel import Pipeline
+from pipel import CollectingPipeline as Pipeline
 from pipel import PipelineLogger
 import os
 import filecmp
