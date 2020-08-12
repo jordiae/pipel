@@ -14,3 +14,8 @@ jobs:
         sudo apt-get install python3-sphinx
         cd ./docs
         make html
+    
+    - name: Deploy to GitHub pages
+      uses: crazy-max/ghaction-github-pages@v2.1.2
+      with:
+        build_dir: ./docs/_build/html
