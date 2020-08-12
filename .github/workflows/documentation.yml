@@ -1,0 +1,14 @@
+name: Build documentation
+
+on:
+  push
+
+jobs:
+  create_html:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Build Sphinx docs
+      run: |
+        cd docs
+        make html
