@@ -16,6 +16,7 @@ jobs:
         make html
     
     - name: Deploy to GitHub pages
-      uses: crazy-max/ghaction-github-pages@v2.1.2
-      with:
-        build_dir: ./docs/_build/html
+      uses: maxheld83/ghpages@v0.3.0
+      env:
+        BUILD_DIR: .docs/_build/html
+        GH_PAT: ${{ secrets.GITHUB_TOKEN }}
