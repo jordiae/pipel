@@ -9,6 +9,7 @@ jobs:
 
     steps:
     - name: Build Sphinx docs
-      run: |
-        cd docs
+    - uses: actions/checkout@v2
+    - run: |
+        cd ./docs
         make html
